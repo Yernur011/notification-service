@@ -72,8 +72,7 @@ All other variables have local defaults (see [configuration.md](configuration.md
 ## Run tests
 
 ```bash
-./mvnw test                      # unit + BDD tests
-./mvnw test -pl usecase          # BDD tests only
+./mvnw test
 ```
 
 ## Send a test event

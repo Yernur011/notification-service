@@ -1,7 +1,7 @@
 # Notification Service
 
 Микросервис асинхронной доставки уведомлений через Email, Push, SMS и Chat-каналы.
-Построен на гексагональной архитектуре, Spring Boot, Kafka. Разрабатывается по BDD-подходу.
+Построен на гексагональной архитектуре, Spring Boot, Kafka.
 
 ---
 
@@ -12,11 +12,9 @@
 3. [Модули подробно](#модули-подробно)
 4. [Поток обработки уведомления](#поток-обработки-уведомления)
 5. [Контракты](#контракты)
-6. [BDD-подход: как мы пишем код](#bdd-подход-как-мы-пишем-код)
-7. [Пример: полный BDD-цикл](#пример-полный-bdd-цикл)
-8. [Схема базы данных](#схема-базы-данных)
-9. [Конфигурация](#конфигурация)
-10. [Технологический стек](#технологический-стек)
+6. [Схема базы данных](#схема-базы-данных)
+7. [Конфигурация](#конфигурация)
+8. [Технологический стек](#технологический-стек)
 
 ---
 
@@ -118,8 +116,8 @@ core/src/main/java/com/example/notification/core/
 ├── enums/
 │   ├── NotificationChannel.java       # EMAIL, PUSH, SMS, CHAT
 │   └── NotificationStatus.java        # SENT, FAILED, SKIPPED, PENDING
-└── service/
-    └── TemplateEngine.java            # рендеринг шаблона (Freemarker)
+└── exception/
+    └── TemplateRenderException.java
 ```
 
 ### `usecase` — бизнес-логика
@@ -249,247 +247,6 @@ public interface NotificationUseCase {
 
 ---
 
-## BDD-подход: как мы пишем код
-
-Используем **Cucumber + JUnit 5** для описания поведения на человекочитаемом языке (Gherkin).
-Каждый use case описывается сценарием **до** написания кода.
-
-### Цикл разработки (BDD)
-
-```
-1. Написать .feature файл (Gherkin сценарий)
-        ↓
-2. Запустить тест → он красный (нет реализации)
-        ↓
-3. Написать минимальный код чтобы тест стал зелёным
-        ↓
-4. Рефакторинг
-        ↓
-5. Следующий сценарий
-```
-
-### Структура тестов
-
-```
-usecase/src/test/
-├── java/com/example/notification/usecase/
-│   ├── steps/
-│   │   ├── SendNotificationSteps.java     # step definitions
-│   │   └── SharedTestContext.java         # общий контекст сценария
-│   └── config/
-│       └── CucumberSpringConfig.java
-└── resources/
-    └── features/
-        ├── send_notification.feature
-        ├── deduplication.feature
-        ├── routing.feature
-        └── template_rendering.feature
-```
-
-### Зависимости для BDD
-
-```xml
-<!-- pom.xml в модуле usecase -->
-<dependency>
-    <groupId>io.cucumber</groupId>
-    <artifactId>cucumber-java</artifactId>
-    <scope>test</scope>
-</dependency>
-<dependency>
-    <groupId>io.cucumber</groupId>
-    <artifactId>cucumber-spring</artifactId>
-    <scope>test</scope>
-</dependency>
-<dependency>
-    <groupId>io.cucumber</groupId>
-    <artifactId>cucumber-junit-platform-engine</artifactId>
-    <scope>test</scope>
-</dependency>
-```
-
-### Правила написания сценариев
-
-- **Feature** = один use case или бизнес-правило
-- **Scenario** = конкретный случай поведения
-- **Given** = начальное состояние системы
-- **When** = действие (что происходит)
-- **Then** = ожидаемый результат
-- Сценарий читается как спецификация, понятная бизнесу
-
----
-
-## Пример: полный BDD-цикл
-
-### Шаг 1: Feature-файл
-
-`send_notification.feature`:
-
-```gherkin
-Feature: Отправка уведомления по событию
-
-  Background:
-    Given существует routing-правило: событие "ORDER_CONFIRMED" отправляется через EMAIL и PUSH
-    And существует шаблон для события "ORDER_CONFIRMED" и канала EMAIL:
-      | subject | Ваш заказ {{orderId}} подтверждён          |
-      | body    | Сумма заказа: {{amount}} {{currency}}      |
-
-  Scenario: Успешная отправка уведомления
-    Given получатель с email "user@example.com" и device token "fcm-abc"
-    When приходит событие "ORDER_CONFIRMED" с данными:
-      | orderId  | ORD-456 |
-      | amount   | 4200    |
-      | currency | KZT     |
-    Then уведомление отправлено через EMAIL на "user@example.com"
-    And уведомление отправлено через PUSH на токен "fcm-abc"
-    And в логе записан статус SENT для обоих каналов
-
-  Scenario: Дубликат события игнорируется
-    Given событие с idempotencyKey "ord-456-confirmed" уже было обработано
-    When приходит повторное событие "ORDER_CONFIRMED" с тем же idempotencyKey
-    Then уведомление НЕ отправляется
-    And в логе записан статус SKIPPED
-
-  Scenario: Отправка через EMAIL падает — PUSH продолжает работать
-    Given Email-провайдер недоступен
-    When приходит событие "ORDER_CONFIRMED"
-    Then уведомление отправлено через PUSH
-    And в логе записан статус FAILED для EMAIL и SENT для PUSH
-```
-
-### Шаг 2: Step Definitions
-
-```java
-@CucumberContextConfiguration
-@SpringBootTest
-public class SendNotificationSteps {
-
-    @Autowired
-    private NotificationUseCase notificationUseCase;
-
-    // Моки через Mockito или тестовые реализации (test doubles)
-    @MockBean private ChannelProvider emailProvider;
-    @MockBean private ChannelProvider pushProvider;
-    @MockBean private RoutingRepository routingRepository;
-    @MockBean private TemplateRepository templateRepository;
-    @MockBean private DeduplicationPort deduplicationPort;
-    @MockBean private NotificationLogRepository logRepository;
-
-    private NotificationRequest request;
-
-    @Given("существует routing-правило: событие {string} отправляется через EMAIL и PUSH")
-    public void existsRoutingRule(String eventType) {
-        when(routingRepository.findChannels(eventType))
-            .thenReturn(List.of(EMAIL, PUSH));
-    }
-
-    @Given("существует шаблон для события {string} и канала EMAIL:")
-    public void existsEmailTemplate(String eventType, DataTable table) {
-        Map<String, String> data = table.asMap();
-        var template = NotificationTemplate.builder()
-            .eventType(eventType)
-            .channel(EMAIL)
-            .subject(data.get("subject"))
-            .body(data.get("body"))
-            .build();
-        when(templateRepository.find(eventType, EMAIL, "ru"))
-            .thenReturn(Optional.of(template));
-    }
-
-    @When("приходит событие {string} с данными:")
-    public void eventArrives(String eventType, DataTable table) {
-        request = NotificationRequest.builder()
-            .eventType(eventType)
-            .idempotencyKey("test-key-" + eventType)
-            .locale("ru")
-            .recipient(Recipient.builder()
-                .email("user@example.com")
-                .deviceTokens(List.of("fcm-abc"))
-                .build())
-            .templateData(table.asMap())
-            .build();
-
-        notificationUseCase.handle(request);
-    }
-
-    @Then("уведомление отправлено через EMAIL на {string}")
-    public void notificationSentViaEmail(String email) {
-        verify(emailProvider).send(argThat(n ->
-            n.getChannel() == EMAIL &&
-            n.getRecipient().getEmail().equals(email)
-        ));
-    }
-
-    @Then("в логе записан статус SENT для обоих каналов")
-    public void logContainsSentForBothChannels() {
-        verify(logRepository, times(2)).save(argThat(log ->
-            log.getStatus() == SENT
-        ));
-    }
-
-    @Then("уведомление НЕ отправляется")
-    public void notificationNotSent() {
-        verifyNoInteractions(emailProvider, pushProvider);
-    }
-}
-```
-
-### Шаг 3: Реализация `SendNotificationUseCase`
-
-Пишем минимальный код, чтобы сценарии стали зелёными:
-
-```java
-@Component
-@RequiredArgsConstructor
-public class SendNotificationUseCase implements NotificationUseCase {
-
-    private final DeduplicationPort deduplicationPort;
-    private final RoutingRepository routingRepository;
-    private final TemplateRepository templateRepository;
-    private final TemplateEngine templateEngine;
-    private final Map<NotificationChannel, ChannelProvider> channelProviders;
-    private final NotificationLogRepository logRepository;
-
-    @Override
-    public NotificationResult handle(NotificationRequest request) {
-
-        if (deduplicationPort.isDuplicate(request.getIdempotencyKey())) {
-            logRepository.save(NotificationLog.skipped(request));
-            return NotificationResult.skipped();
-        }
-
-        deduplicationPort.markProcessed(request.getIdempotencyKey());
-
-        List<NotificationChannel> channels =
-            routingRepository.findChannels(request.getEventType());
-
-        for (NotificationChannel channel : channels) {
-            NotificationLog log = NotificationLog.pending(request, channel);
-            try {
-                var template = templateRepository
-                    .find(request.getEventType(), channel, request.getLocale())
-                    .orElseThrow(() -> new TemplateNotFoundException(request.getEventType(), channel));
-
-                var rendered = templateEngine.render(template, request.getTemplateData());
-                rendered.setRecipient(request.getRecipient());
-                rendered.setChannel(channel);
-
-                channelProviders.get(channel).send(rendered);
-
-                log.markSent();
-            } catch (Exception e) {
-                log.markFailed(e.getMessage());
-            } finally {
-                logRepository.save(log);
-            }
-        }
-
-        return NotificationResult.processed();
-    }
-}
-```
-
----
-
 ## Схема базы данных
 
 ### `notification_routing`
@@ -600,7 +357,6 @@ notification:
 | БД | PostgreSQL + Spring Data JPA |
 | Кэш / Dedup | Redis (Spring Data Redis) |
 | Шаблонизатор | Freemarker |
-| BDD-тестирование | Cucumber 7 + JUnit 5 |
 | Unit-тесты | JUnit 5 + Mockito |
 | Email | SendGrid / AWS SES |
 | Push | FCM + APNs (firebase-admin) |

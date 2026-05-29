@@ -1,3 +1,43 @@
 spring:
   application:
-    name: microservice
+    name: notification-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "kz.dev.core.notification.domain"
+        spring.json.value.default.type: "kz.dev.core.notification.domain.NotificationEvent"
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/notifications}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+notification:
+  kafka:
+    topic: ${NOTIFICATION_TOPIC:notifications}
+    dlq-topic: ${NOTIFICATION_DLQ_TOPIC:notifications-dlq}
+
+  deduplication:
+    ttl-seconds: ${DEDUP_TTL_SECONDS:86400}
+
+  channels:
+    email:
+      provider: sendgrid
+      api-key: ${SENDGRID_API_KEY:}
+    sms:
+      provider: twilio
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+    push:
+      fcm-server-key: ${FCM_SERVER_KEY:}

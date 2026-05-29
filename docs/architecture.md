@@ -8,7 +8,7 @@ Notification Service is built on **Hexagonal Architecture** (Ports & Adapters). 
 notification-service/
 ├── api/          # Inbound ports (interfaces) — what the service exposes
 ├── spi/          # Outbound ports (interfaces) — what the service requires
-├── core/         # Domain objects, value objects, enums, TemplateEngine
+├── core/         # Domain objects, value objects, enums
 ├── usecase/      # Business logic — implements api, depends only on spi + core
 └── microservice/ # Spring Boot entry point, assembles all modules
 ```
@@ -88,7 +88,6 @@ NotificationUseCase.handle(request)
 | Database       | PostgreSQL + Spring Data JPA        |
 | Cache / Dedup  | Redis (Spring Data Redis)           |
 | Templates      | Freemarker                          |
-| BDD tests      | Cucumber 7 + JUnit 5                |
 | Unit tests     | JUnit 5 + Mockito                   |
 | Email          | SendGrid / AWS SES                  |
 | Push           | FCM + APNs (firebase-admin)         |
